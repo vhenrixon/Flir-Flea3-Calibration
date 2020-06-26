@@ -1,0 +1,2 @@
+add_executable(run_calibration flea3_photometric_dataset.cpp)
+target_link_libraries(run_calibration Spinnaker Boost::filesystem)

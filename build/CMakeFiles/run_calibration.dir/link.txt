@@ -1,1 +1,0 @@
-/usr/bin/c++    -rdynamic CMakeFiles/run_calibration.dir/src/main.cpp.o  -o run_calibration 

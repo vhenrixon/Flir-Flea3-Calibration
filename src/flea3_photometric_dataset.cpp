@@ -15,9 +15,8 @@ using namespace std;
 // This function configures a custom exposure time. Automatic exposure is turned
 // off in order to allow for the customization, and then the custom setting is
 // applied.
-int setExposure(CameraPtr pCam, double exposureTime)
+void setExposure(CameraPtr pCam, double exposureTime)
 {
-    int result = 0;
 
     cout << endl << endl << "*** CONFIGURING EXPOSURE ***" << endl << endl;
 
@@ -45,7 +44,7 @@ int setExposure(CameraPtr pCam, double exposureTime)
         if (!IsReadable(pCam->ExposureAuto) || !IsWritable(pCam->ExposureAuto))
         {
             cout << "Unable to disable automatic exposure. Aborting..." << endl << endl;
-            return -1;
+            throw std::exception();
         }
 
         pCam->ExposureAuto.SetValue(ExposureAuto_Off);
@@ -69,7 +68,7 @@ int setExposure(CameraPtr pCam, double exposureTime)
         if (!IsReadable(pCam->ExposureTime) || !IsWritable(pCam->ExposureTime))
         {
             cout << "Unable to set exposure time. Aborting..." << endl << endl;
-            return -1;
+            throw std::exception();
         }
 
         // Ensure desired exposure time does not exceed the maximum
@@ -88,21 +87,18 @@ int setExposure(CameraPtr pCam, double exposureTime)
     catch (Spinnaker::Exception& e)
     {
         cout << "Error: " << e.what() << endl;
-        result = -1;
+        throw std::exception();
     }
 
-    return result;
 }
 
 // This function returns the camera to a normal state by re-enabling automatic
 // exposure.
-int ResetExposure(CameraPtr pCam)
+void ResetExposure(CameraPtr pCam)
 {
-    int result = 0;
 
     try
     {
-        //
         // Turn automatic exposure back on
         //
         // *** NOTES ***
@@ -112,7 +108,6 @@ int ResetExposure(CameraPtr pCam)
         if (!IsReadable(pCam->ExposureAuto) || !IsWritable(pCam->ExposureAuto))
         {
             cout << "Unable to enable automatic exposure (node retrieval). Non-fatal error..." << endl << endl;
-            return -1;
         }
 
         pCam->ExposureAuto.SetValue(ExposureAuto_Continuous);
@@ -122,29 +117,31 @@ int ResetExposure(CameraPtr pCam)
     catch (Spinnaker::Exception& e)
     {
         cout << "Error: " << e.what() << endl;
-        result = -1;
+        throw std::exception();
     }
 
-    return result;
 }
 
 void setCameraToContinuous(CameraPtr pCam){
+    /*
+        This function sets the camera to continuous mode
+    */
+    if (!IsReadable(pCam->AcquisitionMode) || !IsWritable(pCam->AcquisitionMode))
+    {
+        cout << "Unable to set acquisition mode to continuous. Aborting..." << endl << endl;
+        throw std::exception();
+    }
 
-    // Set acquisition mode to continuous
-        if (!IsReadable(pCam->AcquisitionMode) || !IsWritable(pCam->AcquisitionMode))
-        {
-            cout << "Unable to set acquisition mode to continuous. Aborting..." << endl << endl;
-            throw std::exception();
-        }
+    pCam->AcquisitionMode.SetValue(AcquisitionMode_Continuous);
 
-        pCam->AcquisitionMode.SetValue(AcquisitionMode_Continuous);
-
-        cout << "Acquisition mode set to continuous..." << endl;
+    cout << "Acquisition mode set to continuous..." << endl;
 
 }
 
 void createDirectory(string path){
-
+    /*
+        This function creates in directory in the current path and then switch the current path to the newly created directory
+    */
     boost::filesystem::path p{path};
     if(!(boost::filesystem::exists(p))){
         boost::filesystem::create_directory(p);
@@ -155,8 +152,9 @@ void createDirectory(string path){
 }
 
 gcstring getSerialNumber(CameraPtr pCam){
-    
-    // Get device serial number for filename
+    /*
+        This function returns the serial for a camera object.
+    */
     gcstring deviceSerialNumber("");
 
     if (IsReadable(pCam->TLDevice.DeviceSerialNumber))
@@ -171,7 +169,9 @@ gcstring getSerialNumber(CameraPtr pCam){
 }
 
 ostringstream getUniqueName(gcstring serialNumber ,unsigned int imageCnt){
-
+    /*
+        This function generates a unique name for the picture based on serial number, time(millie seconds), and image count.
+    */
     ostringstream filename;
     filename << "ExposureQS-";
     if (serialNumber != "")
@@ -194,10 +194,8 @@ ostringstream getUniqueName(gcstring serialNumber ,unsigned int imageCnt){
 void acquireXImages(CameraPtr pCam, int amountOfImages)
 {
     /*
-    TODO
-     - When acquiring image in a fast manner, you might get a error status of 3 which is incomplete packet so make a check if it 
+        This function acquires X number of images and saves them in current directory with a unique name. 
     */
-
     cout << endl << "*** IMAGE ACQUISITION ***" << endl << endl;
 
     try
@@ -219,9 +217,9 @@ void acquireXImages(CameraPtr pCam, int amountOfImages)
             try{
 
                 // Retrieve next received image and ensure image completion
-               
                 ImagePtr pResultImage = pCam->GetNextImage(1000);
-                 cout << "getting img" << endl;
+
+
                 if(pResultImage->IsIncomplete()){
                     continue;
                 }else{
@@ -258,10 +256,12 @@ void acquireXImages(CameraPtr pCam, int amountOfImages)
 }
 
 void vignetteDatasetCollection(CameraPtr pCam){    
-    
+    /*
+        This function collects the image used in the vignette photometric calibratin
+    */
     try{
         int waitTime = 10; 
-        int totalImg = 800;          // Simillar to the amount of the images in the vignette TUMS sample
+        int totalImg = 800;             // Simillar to the amount of the images in the vignette TUMS sample
         
         // Initialize camera
         pCam->Init();
@@ -272,8 +272,6 @@ void vignetteDatasetCollection(CameraPtr pCam){
         
         for(int pictureTaken=0; pictureTaken < totalImg; ++pictureTaken){
             acquireXImages(pCam, 1);
-
-        
         }
 
         cout << "Completed gathering 800 pictures for the vignette Dataset." << endl;
@@ -292,14 +290,18 @@ void vignetteDatasetCollection(CameraPtr pCam){
 
 }
 vector<double> getExposureVector(CameraPtr pCam){
-        
-    try{
-        double cam_min = pCam->ExposureTime.GetMin();   // Min exposure of the Flire Flea3 camera in Microseconds
-        double cam_max = pCam->ExposureTime.GetMax();   // Max exposure of the Flire Flea3 camera in Microseconds
-        double cam_increment = 10.0;         // Microseconds
+    /*
 
-        double tum_min = 50.0;              // Microseconds
-        double tum_increment = 1.05;        // Microseconds   
+    This function returns a vector with the exposure that will be used in the photometric response data collection.
+
+    */
+    try{
+        double cam_min = pCam->ExposureTime.GetMin();   // Min exposure of the Flir Flea3 camera in Microseconds
+        double cam_max = pCam->ExposureTime.GetMax();   // Max exposure of the Flir Flea3 camera in Microseconds
+        double cam_increment = 10.0;                    // The addition increment used for the Flir Flea3 in Microseconds
+
+        double tum_min = 50.0;                          // The minimum exposure from TUM in Microseconds
+        double tum_increment = 1.05;                    // The multiplicative increment in Microseconds   
 
         vector<double> cam_exposure_vector; 
         vector<double> tum_exposure_vector; 
@@ -308,11 +310,11 @@ vector<double> getExposureVector(CameraPtr pCam){
         double tum_exposure = tum_min; 
 
         while(cam_exposure < cam_max){
-            cam_exposure += cam_increment; 
+            cam_exposure += cam_increment;              // Gathering the possible camera exposure for the Flir Flea3 
             cam_exposure_vector.push_back(cam_exposure);
         }
         while(tum_exposure < cam_max){
-            tum_exposure *= tum_increment;
+            tum_exposure *= tum_increment;              // Gathering the possible camera exposure that were used in the TUM dataset
             tum_exposure_vector.push_back(tum_exposure);
         }
         
@@ -320,6 +322,8 @@ vector<double> getExposureVector(CameraPtr pCam){
 
         int i = 0;
         int j = 0;
+
+        // Comparing the two vectors and deciding which value to use for the Flir Flea3 
         while(i < tum_exposure_vector.size() && j < cam_exposure_vector.size()){
             while(i< tum_exposure_vector.size() && tum_exposure_vector[i] < cam_exposure_vector[j]){
                 i++;
@@ -343,7 +347,10 @@ vector<double> getExposureVector(CameraPtr pCam){
 }
 
 void responseDatasetCollection(CameraPtr pCam){
-
+    /*
+        This function runs the gathering of 1000 images at 120 different exposures in order to create a photometric
+        response dataset. 
+    */
     try{     
 
         // Initialize camera
@@ -351,20 +358,17 @@ void responseDatasetCollection(CameraPtr pCam){
         
         createDirectory("response-dataset");
                                                 
-        vector<double> exposures = getExposureVector(pCam);
+        vector<double> exposures = getExposureVector(pCam);     // Gather the 120 different exposure that will be used in the dataset
 
         // Looping for the 120 exposures that must be checked
         for(double exposure : exposures){
             
-            // **NOTE** 
-            // The image retrivale function handles the gathering of photos 
-
             setExposure(pCam, exposure);
-            acquireXImages(pCam, 8);                         // The 1000 images at 120 exposures; 1000/120 = 8.333 Images/exposure
+            acquireXImages(pCam, 8);                            // The 1000 images at 120 exposures; 1000/120 = 8.333 Images/exposure
         }
         
 
-        ResetExposure(pCam);
+        ResetExposure(pCam);                                   
         cout << "Gathered and saved 1000 images. The response Dataset collection is complete. " << endl;
 
         // Deinitialize the camera
@@ -379,9 +383,11 @@ void responseDatasetCollection(CameraPtr pCam){
 
 }
 
-// Checking arguments to see what kind of photometric calibration will be used
 void parseArgument(int argc,char** argv, CameraList camList){
-        // Checking arguments to see what kind of photometric calibration will be used
+    /*
+        This function parse the users argument to decide which photometric calibration dateset will be gathered.
+    */
+
     if(argc < 2){
         
         cout << "This program requires you to detail which kind of photometric calibration dataset collection is wanted. Either vignette or response." << endl;    
@@ -405,7 +411,9 @@ void parseArgument(int argc,char** argv, CameraList camList){
 }
 
 bool cameraCheck(CameraList camList,SystemPtr system){
-
+    /*
+        This function checks to see if there are enough cameras to attempt to gather a calibration dataset.
+    */
     unsigned int numCameras = camList.GetSize();
     cout << "Number of cameras detected: " << numCameras << endl << endl;
     if (numCameras == 0)
@@ -426,19 +434,20 @@ bool cameraCheck(CameraList camList,SystemPtr system){
 }
 
 CameraList getCameras(SystemPtr system){
+    /*
+        This function returns the camera that are available to use. 
+    */
 
     CameraList camList = system->GetCameras();
     // Finish if there are no cameras
     if(cameraCheck(camList, system)){
         return camList;
     }else{
-        throw std::exception();     // Gracefully shutdown the program
+        throw std::exception();             // Gracefully shutdown the program
     }
 }
 
 
-// Example entry point; please see Enumeration_QuickSpin example for more
-// in-depth comments on preparing and cleaning up the system.
 int main(int argc, char** argv)
 {
 

@@ -1,6 +1,6 @@
-# Flir-Flea3-Calibration
+# Flir-Flea3-Calibration-dataset
 
-The Flir Flea3 Calibration is program that allows for the photometric calibration of the Flire Flea3 camera.
+The Flir Flea3 Calibration dataset is a program that allows for the collection of a photometric calibration dataset for the Flir Flea3 camera using the Spinnaker SDK.
 
 ## Installation
 
@@ -11,7 +11,8 @@ You will need to download the SDK from the Flir box link and then extract it. Af
 
 NOTE: This calibration script has only been tested on a Ubuntu system.
 
-After installing the SDK, clone this repository and follow the build instructions.
+After installing the SDK, clone this repository, and follow the build instructions.
+
 
 ## Building
 
@@ -20,4 +21,7 @@ After installing the SDK, clone this repository and follow the build instruction
 - cmake ..
 - cmake --build .
 - cd src/
-- ./run_calibration  --response or --vignette (based on which calibration you would like to preform)
+- ./run_calibration  --response or --vignette (based on which calibration dataset you would like to gather)
+
+The program will create a folder based on the selected photometric and dump the images into it. The images in the folder can be used to a generate calibration file using the 
+this git repository: https://github.com/tum-vision/mono_dataset_code

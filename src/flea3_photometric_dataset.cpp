@@ -4,7 +4,6 @@
 #include <sstream>
 #include <chrono>
 #include <thread>
-#include <ctime>
 #include <boost/filesystem.hpp>
 
 using namespace Spinnaker;
@@ -50,7 +49,7 @@ int setExposure(CameraPtr pCam, double exposureTime)
         }
 
         pCam->ExposureAuto.SetValue(ExposureAuto_Off);
-
+        pCam->ExposureMode.SetValue(ExposureMode_Timed);
         cout << "Automatic exposure disabled..." << endl;
 
         //
@@ -129,186 +128,151 @@ int ResetExposure(CameraPtr pCam)
     return result;
 }
 
-// This function prints the device information of the camera from the transport
-// layer; please see NodeMapInfo example for more in-depth comments on printing
-// device information from the nodemap.
-int PrintDeviceInfo(CameraPtr pCam)
-{
-    int result = 0;
+void setCameraToContinuous(CameraPtr pCam){
 
-    cout << endl << "*** DEVICE INFORMATION ***" << endl << endl;
-
-    try
-    {
-        INodeMap& nodeMap = pCam->GetTLDeviceNodeMap();
-
-        FeatureList_t features;
-        CCategoryPtr category = nodeMap.GetNode("DeviceInformation");
-        if (IsAvailable(category) && IsReadable(category))
-        {
-            category->GetFeatures(features);
-
-            FeatureList_t::const_iterator it;
-            for (it = features.begin(); it != features.end(); ++it)
-            {
-                CNodePtr pfeatureNode = *it;
-                cout << pfeatureNode->GetName() << " : ";
-                CValuePtr pValue = (CValuePtr)pfeatureNode;
-                cout << (IsReadable(pValue) ? pValue->ToString() : "Node not readable");
-                cout << endl;
-            }
-        }
-        else
-        {
-            cout << "Device control information not available." << endl;
-        }
-    }
-    catch (Spinnaker::Exception& e)
-    {
-        cout << "Error: " << e.what() << endl;
-        result = -1;
-    }
-
-    return result;
-}
-
-
-// This function acquires and saves 8 images from a device; please see
-// Acquisition example for more in-depth comments on the acquisition of images.
-int acquireXImages(CameraPtr pCam, int amountOfImages, string path, bool hasFolder)
-{
-    int result = 0;
-
-    cout << endl << "*** IMAGE ACQUISITION ***" << endl << endl;
-
-    try
-    {
-        // Set acquisition mode to continuous
+    // Set acquisition mode to continuous
         if (!IsReadable(pCam->AcquisitionMode) || !IsWritable(pCam->AcquisitionMode))
         {
             cout << "Unable to set acquisition mode to continuous. Aborting..." << endl << endl;
-            return -1;
+            throw std::exception();
         }
 
         pCam->AcquisitionMode.SetValue(AcquisitionMode_Continuous);
 
         cout << "Acquisition mode set to continuous..." << endl;
 
-        // Begin acquiring images
-        pCam->BeginAcquisition();
+}
+
+void createDirectory(string path){
+
+    boost::filesystem::path p{path};
+    if(!(boost::filesystem::exists(p))){
+        boost::filesystem::create_directory(p);
+        cout << "Directory has been created for the images!" << endl;
+        // Changing the current path of the program so that files can be saved in the directory that was just created 
+        boost::filesystem::current_path(p);
+    }
+}
+
+gcstring getSerialNumber(CameraPtr pCam){
+    
+    // Get device serial number for filename
+    gcstring deviceSerialNumber("");
+
+    if (IsReadable(pCam->TLDevice.DeviceSerialNumber))
+    {
+        deviceSerialNumber = pCam->TLDevice.DeviceSerialNumber.GetValue();
+
+        cout << "Device serial number retrieved as " << deviceSerialNumber << "..." << endl;
+    }
+    cout << endl;
+
+    return deviceSerialNumber;
+}
+
+ostringstream getUniqueName(gcstring serialNumber ,unsigned int imageCnt){
+
+    ostringstream filename;
+    filename << "ExposureQS-";
+    if (serialNumber != "")
+    {
+        filename << serialNumber.c_str() << "-";
+    }
+
+    // current time for the name
+    auto time = chrono::system_clock::now();
+    auto since_epoch = time.time_since_epoch();
+    auto milli = chrono::duration_cast<chrono::milliseconds>(since_epoch);
+    long now = milli.count(); 
+
+    filename << imageCnt << "-" << now << ".jpg";
+    return filename;
+}
+
+// This function acquires and saves 8 images from a device; please see
+// Acquisition example for more in-depth comments on the acquisition of images.
+void acquireXImages(CameraPtr pCam, int amountOfImages)
+{
+    /*
+    TODO
+     - When acquiring image in a fast manner, you might get a error status of 3 which is incomplete packet so make a check if it 
+    */
+
+    cout << endl << "*** IMAGE ACQUISITION ***" << endl << endl;
+
+    try
+    {
+        // Set acquisition mode to continuous
+        setCameraToContinuous(pCam);
 
         cout << "Acquiring images..." << endl;
+    
+        pCam->BeginAcquisition();
+        
 
         // Get device serial number for filename
-        gcstring deviceSerialNumber("");
+        gcstring deviceSerialNumber = getSerialNumber(pCam);
 
-        if (IsReadable(pCam->TLDevice.DeviceSerialNumber))
-        {
-            deviceSerialNumber = pCam->TLDevice.DeviceSerialNumber.GetValue();
 
-            cout << "Device serial number retrieved as " << deviceSerialNumber << "..." << endl;
-        }
-        cout << endl;
+        int img_collected = 0;
+        while(img_collected < amountOfImages){
+            try{
 
-        // Creating folder
-        if(!hasFolder){
-            boost::filesystem::path p{path};
-            boost::filesystem::create_directory(p);
-            cout << "Directory has been created for the images!" << endl;
-            // Changing the current path of the program so that files can be saved in the directory that was just created 
-            boost::filesystem::current_path(p);
-        }
-        
-    
-        // Retrieve, convert, and save images
-        const int k_numImages = amountOfImages;
-
-        for (unsigned int imageCnt = 0; imageCnt < k_numImages; imageCnt++)
-        {
-            try
-            {
                 // Retrieve next received image and ensure image completion
+               
                 ImagePtr pResultImage = pCam->GetNextImage(1000);
-
-                if (pResultImage->IsIncomplete())
-                {
-                    cout << "Image incomplete with image status " << pResultImage->GetImageStatus() << "..." << endl
-                         << endl;
-                }
-                else
-                {
-                    // Print image information
-                    cout << "Grabbed image " << imageCnt << ", width = " << pResultImage->GetWidth()
-                         << ", height = " << pResultImage->GetHeight() << endl;
-
+                 cout << "getting img" << endl;
+                if(pResultImage->IsIncomplete()){
+                    continue;
+                }else{
+                    
                     // Convert image to mono 8
                     ImagePtr convertedImage = pResultImage->Convert(PixelFormat_Mono8);
 
                     // Create a unique filename
-                    ostringstream filename;
-
-                    filename << "ExposureQS-";
-                    if (deviceSerialNumber != "")
-                    {
-                        filename << deviceSerialNumber.c_str() << "-";
-                    }
-
-                    // current time for the name
-                    time_t current_time;
-                    time(&current_time);
-
-                    filename << imageCnt << "-" << current_time << ".jpg";
-
-
+                    ostringstream filename = getUniqueName(deviceSerialNumber, img_collected);
 
                     // Save image
                     convertedImage->Save(filename.str().c_str());
 
                     cout << "Image saved at " << filename.str() << endl;
+                    
+                    img_collected++;
                 }
 
-                // Release image
-                pResultImage->Release();
 
-                cout << endl;
-            }
-            catch (Spinnaker::Exception& e)
-            {
+
+            }catch(Spinnaker::Exception& e){
                 cout << "Error: " << e.what() << endl;
-                result = -1;
             }
         }
-
+        // Error: Spinnaker: Camera is not streaming [-1010] <---- this is the error that is occuring 
         // End acquisition
         pCam->EndAcquisition();
     }
     catch (Spinnaker::Exception& e)
     {
         cout << "Error: " << e.what() << endl;
-        result = -1;
+        throw std::exception();
     }
-
-    return result;
 }
+
 void vignetteDatasetCollection(CameraPtr pCam){    
     
     try{
         int waitTime = 10; 
         int totalImg = 800;          // Simillar to the amount of the images in the vignette TUMS sample
-        bool hasFolder = false;
         
         // Initialize camera
         pCam->Init();
+        createDirectory("vignette-dataset");
 
         cout << "You have 10 seconds to position your camera!" << endl;
         sleep(waitTime);
+        
         for(int pictureTaken=0; pictureTaken < totalImg; ++pictureTaken){
-            if(hasFolder){
-                acquireXImages(pCam, 1, "vignette-dataset", true);
-            }else{
-                acquireXImages(pCam, 1, "vignette-dataset", false);
-                hasFolder = true;
-            }
+            acquireXImages(pCam, 1);
+
         
         }
 
@@ -327,36 +291,79 @@ void vignetteDatasetCollection(CameraPtr pCam){
 
 
 }
+vector<double> getExposureVector(CameraPtr pCam){
+        
+    try{
+        double cam_min = pCam->ExposureTime.GetMin();   // Min exposure of the Flire Flea3 camera in Microseconds
+        double cam_max = pCam->ExposureTime.GetMax();   // Max exposure of the Flire Flea3 camera in Microseconds
+        double cam_increment = 10.0;         // Microseconds
+
+        double tum_min = 50.0;              // Microseconds
+        double tum_increment = 1.05;        // Microseconds   
+
+        vector<double> cam_exposure_vector; 
+        vector<double> tum_exposure_vector; 
+        
+        double cam_exposure = cam_min; 
+        double tum_exposure = tum_min; 
+
+        while(cam_exposure < cam_max){
+            cam_exposure += cam_increment; 
+            cam_exposure_vector.push_back(cam_exposure);
+        }
+        while(tum_exposure < cam_max){
+            tum_exposure *= tum_increment;
+            tum_exposure_vector.push_back(tum_exposure);
+        }
+        
+        vector<double> calibration_exposure;
+
+        int i = 0;
+        int j = 0;
+        while(i < tum_exposure_vector.size() && j < cam_exposure_vector.size()){
+            while(i< tum_exposure_vector.size() && tum_exposure_vector[i] < cam_exposure_vector[j]){
+                i++;
+            }
+            while(j < cam_exposure_vector.size() && cam_exposure_vector[j] < tum_exposure_vector[i]){
+                j++;
+            }
+
+            auto exposure = cam_exposure_vector[j-1];
+            calibration_exposure.push_back(exposure);
+        }
+
+        return calibration_exposure;
+
+    }catch(Spinnaker::Exception& e){
+        cout << "Error occurred when creating the exposure vector!" << endl;
+        cout << "Error: " << e.what() << endl;
+        throw std::exception();
+    }
+
+}
+
 void responseDatasetCollection(CameraPtr pCam){
 
-    try{
-        int multiplicativeGain = 1.05;  // The Multiplicative Increment
-        int currentExposure = 50;       // The starting point for the exposure is at 50(microseconds)
-        int exposureCount = 120;        // The number of times that the exposure of the camera must be changed in the dataset
-        bool hasFolder = false;
+    try{     
+
         // Initialize camera
         pCam->Init();   
+        
+        createDirectory("response-dataset");
+                                                
+        vector<double> exposures = getExposureVector(pCam);
 
         // Looping for the 120 exposures that must be checked
-        for(int exposure=0; exposure < exposureCount; ++exposure){
+        for(double exposure : exposures){
             
             // **NOTE** 
             // The image retrivale function handles the gathering of photos 
-            if(hasFolder){
 
-                setExposure(pCam, currentExposure);
-                currentExposure = currentExposure + (currentExposure*multiplicativeGain);
-                acquireXImages(pCam, 8, "response-dataset", true);                         // The 1000 images at 120 exposures; 1000/120 = 8.333 Images/exposure
-
-            }else{
-                
-                setExposure(pCam, currentExposure);
-                currentExposure = currentExposure + (currentExposure*multiplicativeGain);
-                acquireXImages(pCam, 8, "response-dataset", false);                          // The 1000 images at 120 exposures; 1000/120 = 8.333 Images/exposure
-                hasFolder = true;
-            }
-
+            setExposure(pCam, exposure);
+            acquireXImages(pCam, 8);                         // The 1000 images at 120 exposures; 1000/120 = 8.333 Images/exposure
         }
+        
+
         ResetExposure(pCam);
         cout << "Gathered and saved 1000 images. The response Dataset collection is complete. " << endl;
 
@@ -372,55 +379,13 @@ void responseDatasetCollection(CameraPtr pCam){
 
 }
 
-
-
-// Example entry point; please see Enumeration_QuickSpin example for more
-// in-depth comments on preparing and cleaning up the system.
-int main(int argc, char** argv)
-{
-    int result = 0;
-
-    // Print application build information
-    cout << "Application build date: " << __DATE__ << " " << __TIME__ << endl << endl;
-
-    // Retrieve singleton reference to system object
-    SystemPtr system = System::GetInstance();
-
-    // Print out current library version
-    const LibraryVersion spinnakerLibraryVersion = system->GetLibraryVersion();
-    cout << "Spinnaker library version: " << spinnakerLibraryVersion.major << "." << spinnakerLibraryVersion.minor
-         << "." << spinnakerLibraryVersion.type << "." << spinnakerLibraryVersion.build << endl
-         << endl;
-
-    // Retrieve list of cameras from the system
-    CameraList camList = system->GetCameras();
-
-    unsigned int numCameras = camList.GetSize();
-
-    cout << "Number of cameras detected: " << numCameras << endl << endl;
-
-    // Finish if there are no cameras
-    if (numCameras == 0)
-    {
-        // Clear camera list before releasing system
-        camList.Clear();
-
-        // Release system
-        system->ReleaseInstance();
-
-        cout << "Not enough cameras!" << endl;
-        cout << "Done! Press Enter to exit..." << endl;
-        getchar();
-
-        return -1;
-    }
-
-    // Checking arguments to see what kind of photometric calibration will be used
+// Checking arguments to see what kind of photometric calibration will be used
+void parseArgument(int argc,char** argv, CameraList camList){
+        // Checking arguments to see what kind of photometric calibration will be used
     if(argc < 2){
         
         cout << "This program requires you to detail which kind of photometric calibration dataset collection is wanted. Either vignette or response." << endl;    
-        return -1;
-    
+        throw std::exception();
     }else{
         if(string(argv[1]) == "--vignette"){
             
@@ -434,20 +399,74 @@ int main(int argc, char** argv)
 
         }else{
             cout << "Argument is not understood! Please use either --vignette or --response. Exiting!" << endl;
-            return -1; 
+            throw std::exception();
         }
     }
+}
 
+bool cameraCheck(CameraList camList,SystemPtr system){
+
+    unsigned int numCameras = camList.GetSize();
+    cout << "Number of cameras detected: " << numCameras << endl << endl;
+    if (numCameras == 0)
+    {
+        // Clear camera list before releasing system
+        camList.Clear();
+
+        // Release system
+        system->ReleaseInstance();
+
+        cout << "Not enough cameras!" << endl;
+        cout << "Done! Press Enter to exit..." << endl;
+        getchar();
+        return false;
+    }else{
+        return true;
+    }
+}
+
+CameraList getCameras(SystemPtr system){
+
+    CameraList camList = system->GetCameras();
+    // Finish if there are no cameras
+    if(cameraCheck(camList, system)){
+        return camList;
+    }else{
+        throw std::exception();     // Gracefully shutdown the program
+    }
+}
+
+
+// Example entry point; please see Enumeration_QuickSpin example for more
+// in-depth comments on preparing and cleaning up the system.
+int main(int argc, char** argv)
+{
+
+    // Print application build information
+    cout << "Application build date: " << __DATE__ << " " << __TIME__ << endl << endl;
+
+    // Retrieve singleton reference to system object
+    SystemPtr system = System::GetInstance();
+
+    // Print out current library version
+    const LibraryVersion spinnakerLibraryVersion = system->GetLibraryVersion();
+    cout << "Spinnaker library version: " << spinnakerLibraryVersion.major << "." << spinnakerLibraryVersion.minor
+         << "." << spinnakerLibraryVersion.type << "." << spinnakerLibraryVersion.build << endl
+         << endl;
+
+    CameraList camList = getCameras(system);
+
+    parseArgument(argc, argv, camList);
 
 
     // Clear camera list before releasing system
     camList.Clear();
-
+    
     // Release system
     system->ReleaseInstance();
 
     cout << endl << "Done! Press Enter to exit..." << endl;
     getchar();
 
-    return result;
+    return -1;
 }

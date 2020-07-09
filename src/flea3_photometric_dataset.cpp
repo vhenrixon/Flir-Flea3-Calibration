@@ -5,6 +5,7 @@
 #include <chrono>
 #include <thread>
 #include <boost/filesystem.hpp>
+#include <fstream>
 
 using namespace Spinnaker;
 using namespace Spinnaker::GenApi;
@@ -168,30 +169,34 @@ gcstring getSerialNumber(CameraPtr pCam){
     return deviceSerialNumber;
 }
 
-ostringstream getUniqueName(gcstring serialNumber ,unsigned int imageCnt){
-    /*
-        This function generates a unique name for the picture based on serial number, time(millie seconds), and image count.
-    */
-    ostringstream filename;
-    filename << "ExposureQS-";
-    if (serialNumber != "")
-    {
-        filename << serialNumber.c_str() << "-";
-    }
-
+long currentTime(){
     // current time for the name
     auto time = chrono::system_clock::now();
     auto since_epoch = time.time_since_epoch();
     auto milli = chrono::duration_cast<chrono::milliseconds>(since_epoch);
-    long now = milli.count(); 
+    return milli.count(); 
+}
 
-    filename << imageCnt << "-" << now << ".jpg";
+
+ostringstream getUniqueName(gcstring serialNumber){
+    /*
+        This function generates a unique name for the picture based on serial number, time(millie seconds), and image count.
+    */
+    ostringstream filename;
+    filename << "ExposureQS";
+    if (serialNumber != "")
+    {
+        filename << serialNumber.c_str();
+    }
+
+    filename << "-" << currentTime() << ".jpg";
     return filename;
 }
 
+
 // This function acquires and saves 8 images from a device; please see
 // Acquisition example for more in-depth comments on the acquisition of images.
-void acquireXImages(CameraPtr pCam, int amountOfImages)
+void acquireXImages(CameraPtr pCam, int amountOfImages, int totalImgCnt, ofstream &file, double currentExposure)
 {
     /*
         This function acquires X number of images and saves them in current directory with a unique name. 
@@ -228,13 +233,16 @@ void acquireXImages(CameraPtr pCam, int amountOfImages)
                     ImagePtr convertedImage = pResultImage->Convert(PixelFormat_Mono8);
 
                     // Create a unique filename
-                    ostringstream filename = getUniqueName(deviceSerialNumber, img_collected);
+                    ostringstream filename = getUniqueName(deviceSerialNumber);
+                    
 
                     // Save image
                     convertedImage->Save(filename.str().c_str());
 
                     cout << "Image saved at " << filename.str() << endl;
-                    
+                    // Adding information to the times.txt file
+                    file << (totalImgCnt+img_collected) << " " << (currentTime()/1000)<< " " << (currentExposure/1000) << "\n";
+
                     img_collected++;
                 }
 
@@ -265,13 +273,21 @@ void vignetteDatasetCollection(CameraPtr pCam){
         
         // Initialize camera
         pCam->Init();
+        
         createDirectory("vignette-dataset");
 
         cout << "You have 10 seconds to position your camera!" << endl;
         sleep(waitTime);
         
+        // times.txt file 
+        ofstream timeFile; 
+        timeFile.open("times.txt");
+
+        createDirectory("images");
+
         for(int pictureTaken=0; pictureTaken < totalImg; ++pictureTaken){
-            acquireXImages(pCam, 1);
+            auto currentExp = pCam->ExposureTime.GetValue();
+            acquireXImages(pCam, 1,pictureTaken,timeFile,currentExp);
         }
 
         cout << "Completed gathering 800 pictures for the vignette Dataset." << endl;
@@ -279,7 +295,7 @@ void vignetteDatasetCollection(CameraPtr pCam){
         // Deinitialize the camera
         pCam->DeInit();
 
-
+        timeFile.close();
 
     }catch (Spinnaker::Exception& e){
         cout << "A error occurred while doing the vignette dataset collection" << endl;
@@ -298,44 +314,19 @@ vector<double> getExposureVector(CameraPtr pCam){
     try{
         double cam_min = pCam->ExposureTime.GetMin();   // Min exposure of the Flir Flea3 camera in Microseconds
         double cam_max = pCam->ExposureTime.GetMax();   // Max exposure of the Flir Flea3 camera in Microseconds
-        double cam_increment = 10.0;                    // The addition increment used for the Flir Flea3 in Microseconds
+        cout << "Min: " << cam_min << " Max: " << cam_max << endl;
+        double mult_increment = 1.0651;                  // This value was derived from finding the multiplicative gain from going to from min to max in 120 exposures 
+        double current_exposure = cam_min; 
+        int exposure_cnt = 0; 
+    
+        vector<double> calibration_exposure; 
 
-        double tum_min = 50.0;                          // The minimum exposure from TUM in Microseconds
-        double tum_increment = 1.05;                    // The multiplicative increment in Microseconds   
-
-        vector<double> cam_exposure_vector; 
-        vector<double> tum_exposure_vector; 
-        
-        double cam_exposure = cam_min; 
-        double tum_exposure = tum_min; 
-
-        while(cam_exposure < cam_max){
-            cam_exposure += cam_increment;              // Gathering the possible camera exposure for the Flir Flea3 
-            cam_exposure_vector.push_back(cam_exposure);
+        while(exposure_cnt <= 120){
+            calibration_exposure.push_back(current_exposure);
+            current_exposure *= mult_increment; 
+            exposure_cnt++;
         }
-        while(tum_exposure < cam_max){
-            tum_exposure *= tum_increment;              // Gathering the possible camera exposure that were used in the TUM dataset
-            tum_exposure_vector.push_back(tum_exposure);
-        }
-        
-        vector<double> calibration_exposure;
-
-        int i = 0;
-        int j = 0;
-
-        // Comparing the two vectors and deciding which value to use for the Flir Flea3 
-        while(i < tum_exposure_vector.size() && j < cam_exposure_vector.size()){
-            while(i< tum_exposure_vector.size() && tum_exposure_vector[i] < cam_exposure_vector[j]){
-                i++;
-            }
-            while(j < cam_exposure_vector.size() && cam_exposure_vector[j] < tum_exposure_vector[i]){
-                j++;
-            }
-
-            auto exposure = cam_exposure_vector[j-1];
-            calibration_exposure.push_back(exposure);
-        }
-
+        cout << "Finished creating exposure vector." << endl;
         return calibration_exposure;
 
     }catch(Spinnaker::Exception& e){
@@ -353,18 +344,27 @@ void responseDatasetCollection(CameraPtr pCam){
     */
     try{     
 
+
         // Initialize camera
         pCam->Init();   
         
         createDirectory("response-dataset");
-                                                
+
+        // times.txt file 
+        ofstream timeFile; 
+        timeFile.open("times.txt");
+
+        createDirectory("images");
+
         vector<double> exposures = getExposureVector(pCam);     // Gather the 120 different exposure that will be used in the dataset
 
         // Looping for the 120 exposures that must be checked
+        int imgCnt = 0;
         for(double exposure : exposures){
             
             setExposure(pCam, exposure);
-            acquireXImages(pCam, 8);                            // The 1000 images at 120 exposures; 1000/120 = 8.333 Images/exposure
+            acquireXImages(pCam, 8, imgCnt, timeFile, exposure);        
+            imgCnt += 8;                    // The 1000 images at 120 exposures; 1000/120 = 8.333 Images/exposure
         }
         
 
@@ -374,6 +374,7 @@ void responseDatasetCollection(CameraPtr pCam){
         // Deinitialize the camera
         pCam->DeInit();
 
+        timeFile.close();
 
 
     }catch (Spinnaker::Exception& e){

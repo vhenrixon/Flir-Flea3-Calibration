@@ -12,10 +12,15 @@ using namespace Spinnaker::GenApi;
 using namespace Spinnaker::GenICam;
 using namespace std;
 
+/*
+    This function sets the cameras exposure time to a set time. 
+    The exposure time is in microseconds and this function will turn off 
+    the automatic exposure of the camera meaning that it will need to be reset 
+    through the ResetExposure() function.
 
-// This function configures a custom exposure time. Automatic exposure is turned
-// off in order to allow for the customization, and then the custom setting is
-// applied.
+    @param pCam the camera pointer that the exposure that will have its exposure changed
+    @param exposureTime 
+*/
 void setExposure(CameraPtr pCam, double exposureTime)
 {
 
@@ -23,66 +28,28 @@ void setExposure(CameraPtr pCam, double exposureTime)
 
     try
     {
-        //
-        // Turn off automatic exposure mode
-        //
-        // *** NOTES ***
-        // Automatic exposure prevents the manual configuration of exposure
-        // times and needs to be turned off for this example. Enumerations
-        // representing entry nodes have been added to QuickSpin. This allows
-        // for the much easier setting of enumeration nodes to new values.
-        //
-        // In C++, the naming convention of QuickSpin enums is the name of the
-        // enumeration node followed by an underscore and the symbolic of
-        // the entry node. Selecting "Off" on the "ExposureAuto" node is
-        // thus named "ExposureAuto_Off".
-        //
-        // *** LATER ***
-        // Exposure time can be set automatically or manually as needed. This
-        // example turns automatic exposure off to set it manually and back
-        // on to return the camera to its default state.
-        //
         if (!IsReadable(pCam->ExposureAuto) || !IsWritable(pCam->ExposureAuto))
         {
             cout << "Unable to disable automatic exposure. Aborting..." << endl << endl;
             throw std::exception();
         }
-
         pCam->ExposureAuto.SetValue(ExposureAuto_Off);
         pCam->ExposureMode.SetValue(ExposureMode_Timed);
         cout << "Automatic exposure disabled..." << endl;
-
-        //
         // Set exposure time manually; exposure time recorded in microseconds
-        //
-        // *** NOTES ***
-        // Notice that the node is checked for availability and writability
-        // prior to the setting of the node. In QuickSpin, availability is
-        // ensured by checking for null while writability is ensured by checking
-        // the access mode.
-        //
-        // Further, it is ensured that the desired exposure time does not exceed
-        // the maximum. Exposure time is counted in microseconds - this can be
-        // found out either by retrieving the unit with the GetUnit() method or
-        // by checking SpinView.
-        //
         if (!IsReadable(pCam->ExposureTime) || !IsWritable(pCam->ExposureTime))
         {
             cout << "Unable to set exposure time. Aborting..." << endl << endl;
             throw std::exception();
         }
-
         // Ensure desired exposure time does not exceed the maximum
         const double exposureTimeMax = pCam->ExposureTime.GetMax();
-    
         // Making sure that the exposure that is going to be set is less than the max exposure of the camera 
         if (exposureTime > exposureTimeMax)
         {
             exposureTime = exposureTimeMax;
         }
-
         pCam->ExposureTime.SetValue(exposureTime);
-
         cout << std::fixed << "Shutter time set to " << exposureTime << " us..." << endl << endl;
     }
     catch (Spinnaker::Exception& e)
@@ -93,19 +60,10 @@ void setExposure(CameraPtr pCam, double exposureTime)
 
 }
 
-// This function returns the camera to a normal state by re-enabling automatic
-// exposure.
 void ResetExposure(CameraPtr pCam)
 {
-
     try
     {
-        // Turn automatic exposure back on
-        //
-        // *** NOTES ***
-        // Automatic exposure is turned on in order to return the camera to its
-        // default state.
-        //
         if (!IsReadable(pCam->ExposureAuto) || !IsWritable(pCam->ExposureAuto))
         {
             cout << "Unable to enable automatic exposure (node retrieval). Non-fatal error..." << endl << endl;
@@ -123,6 +81,54 @@ void ResetExposure(CameraPtr pCam)
 
 }
 
+void zoom_out_roi(CameraPtr pCam){
+    try
+    {
+        if(IsReadable(pCam->RegionMode) && IsWritable(pCam->RegionMode)){
+            pCam->RegionMode.SetValue(RegionMode_On);
+        }
+        if(IsReadable(pCam->RegionSelector) && IsWritable(pCam->RegionSelector)){
+
+            pCam->RegionSelector.SetValue(RegionSelector_All);
+        }
+
+        if (IsReadable(pCam->AasRoiEnable) && IsWritable(pCam->AasRoiEnable)){
+            pCam->AasRoiEnable.SetValue(false);
+        }
+        
+        if (IsReadable(pCam->OffsetX)&& IsWritable(pCam->OffsetX)){
+            pCam->OffsetX.SetValue(0);
+        }
+        if (IsReadable(pCam->OffsetY)&& IsWritable(pCam->OffsetY)){
+            pCam->OffsetY.SetValue(0);
+        }
+        if (IsReadable(pCam->Width)&& IsWritable(pCam->Width)){
+            pCam->Width.SetValue(pCam->Width.GetMax()); 
+        }
+        if (IsReadable(pCam->Height)&& IsWritable(pCam->Height)){
+            pCam->Height.SetValue(pCam->Height.GetMax());
+        }
+        
+        if (IsReadable(pCam->AasRoiOffsetX)&& IsWritable(pCam->AasRoiOffsetX)){
+            pCam->AasRoiOffsetX.SetValue(0);
+        }
+        if (IsReadable(pCam->AasRoiOffsetY)&& IsWritable(pCam->AasRoiOffsetY)){
+            pCam->AasRoiOffsetY.SetValue(0);
+        }
+        if (IsReadable(pCam->AasRoiWidth)&& IsWritable(pCam->AasRoiWidth)){
+            pCam->AasRoiWidth.SetValue(pCam->AasRoiWidth.GetMax());
+        }
+        if (IsReadable(pCam->AasRoiHeight)&& IsWritable(pCam->AasRoiHeight)){
+            pCam->AasRoiHeight.SetValue(pCam->AasRoiHeight.GetMax());
+        }
+    }
+    catch (Spinnaker::Exception& e)
+    {
+        cout << "Error: " << e.what() << endl;
+        throw std::exception();
+    }
+}
+
 void setCameraToContinuous(CameraPtr pCam){
     /*
         This function sets the camera to continuous mode
@@ -132,9 +138,7 @@ void setCameraToContinuous(CameraPtr pCam){
         cout << "Unable to set acquisition mode to continuous. Aborting..." << endl << endl;
         throw std::exception();
     }
-
     pCam->AcquisitionMode.SetValue(AcquisitionMode_Continuous);
-
     cout << "Acquisition mode set to continuous..." << endl;
 
 }
@@ -188,11 +192,9 @@ ostringstream getUniqueName(gcstring serialNumber){
     {
         filename << serialNumber.c_str();
     }
-
     filename << "-" << currentTime() << ".jpg";
     return filename;
 }
-
 
 // This function acquires and saves 8 images from a device; please see
 // Acquisition example for more in-depth comments on the acquisition of images.
@@ -202,47 +204,31 @@ void acquireXImages(CameraPtr pCam, int amountOfImages, int totalImgCnt, ofstrea
         This function acquires X number of images and saves them in current directory with a unique name. 
     */
     cout << endl << "*** IMAGE ACQUISITION ***" << endl << endl;
-
-    try
-    {
+    try{
         // Set acquisition mode to continuous
         setCameraToContinuous(pCam);
-
         cout << "Acquiring images..." << endl;
-    
         pCam->BeginAcquisition();
-        
-
         // Get device serial number for filename
         gcstring deviceSerialNumber = getSerialNumber(pCam);
-
-
         int img_collected = 0;
         while(img_collected < amountOfImages){
             try{
-
+                zoom_out_roi(pCam);
                 // Retrieve next received image and ensure image completion
                 ImagePtr pResultImage = pCam->GetNextImage(1000);
-
-
                 if(pResultImage->IsIncomplete()){
                     continue;
                 }else{
-                    
                     // Convert image to mono 8
                     ImagePtr convertedImage = pResultImage->Convert(PixelFormat_Mono8);
-
                     // Create a unique filename
                     ostringstream filename = getUniqueName(deviceSerialNumber);
-                    
-
                     // Save image
                     convertedImage->Save(filename.str().c_str());
-
                     cout << "Image saved at " << filename.str() << endl;
                     // Adding information to the times.txt file
                     file << (totalImgCnt+img_collected) << " " << (currentTime()/1000)<< " " << (currentExposure/1000) << "\n";
-
                     img_collected++;
                 }
 
@@ -270,15 +256,14 @@ void vignetteDatasetCollection(CameraPtr pCam){
     try{
         int waitTime = 10; 
         int totalImg = 800;             // Simillar to the amount of the images in the vignette TUMS sample
-        
+
         // Initialize camera
         pCam->Init();
-        
         createDirectory("vignette-dataset");
-
+        setExposure(pCam, 999999);      // Just for testing(will remove soon)
         cout << "You have 10 seconds to position your camera!" << endl;
         sleep(waitTime);
-        
+        zoom_out_roi(pCam);
         // times.txt file 
         ofstream timeFile; 
         timeFile.open("times.txt");
@@ -301,15 +286,12 @@ void vignetteDatasetCollection(CameraPtr pCam){
         cout << "A error occurred while doing the vignette dataset collection" << endl;
         cout << "Error:" << e.what() << endl;
     }
-
-
-
 }
+
 vector<double> getExposureVector(CameraPtr pCam){
     /*
 
     This function returns a vector with the exposure that will be used in the photometric response data collection.
-
     */
     try{
         double cam_min = pCam->ExposureTime.GetMin();   // Min exposure of the Flir Flea3 camera in Microseconds
@@ -343,11 +325,9 @@ void responseDatasetCollection(CameraPtr pCam){
         response dataset. 
     */
     try{     
-
-
         // Initialize camera
         pCam->Init();   
-        
+        zoom_out_roi(pCam);
         createDirectory("response-dataset");
 
         // times.txt file 
@@ -366,8 +346,6 @@ void responseDatasetCollection(CameraPtr pCam){
             acquireXImages(pCam, 8, imgCnt, timeFile, exposure);        
             imgCnt += 8;                    // The 1000 images at 120 exposures; 1000/120 = 8.333 Images/exposure
         }
-        
-
         ResetExposure(pCam);                                   
         cout << "Gathered and saved 1000 images. The response Dataset collection is complete. " << endl;
 
@@ -375,8 +353,6 @@ void responseDatasetCollection(CameraPtr pCam){
         pCam->DeInit();
 
         timeFile.close();
-
-
     }catch (Spinnaker::Exception& e){
         cout << "A error occurred while doing the response dataset collection" << endl;
         cout << "Error:" << e.what() << endl;
@@ -438,12 +414,12 @@ CameraList getCameras(SystemPtr system){
     /*
         This function returns the camera that are available to use. 
     */
-
     CameraList camList = system->GetCameras();
-    // Finish if there are no cameras
-    if(cameraCheck(camList, system)){
+    if(cameraCheck(camList, system))
+    {
         return camList;
-    }else{
+    }else
+    {
         throw std::exception();             // Gracefully shutdown the program
     }
 }
@@ -452,22 +428,11 @@ CameraList getCameras(SystemPtr system){
 int main(int argc, char** argv)
 {
 
-    // Print application build information
-    cout << "Application build date: " << __DATE__ << " " << __TIME__ << endl << endl;
-
     // Retrieve singleton reference to system object
     SystemPtr system = System::GetInstance();
 
-    // Print out current library version
-    const LibraryVersion spinnakerLibraryVersion = system->GetLibraryVersion();
-    cout << "Spinnaker library version: " << spinnakerLibraryVersion.major << "." << spinnakerLibraryVersion.minor
-         << "." << spinnakerLibraryVersion.type << "." << spinnakerLibraryVersion.build << endl
-         << endl;
-
     CameraList camList = getCameras(system);
-
     parseArgument(argc, argv, camList);
-
 
     // Clear camera list before releasing system
     camList.Clear();

@@ -6,6 +6,7 @@
 #include <thread>
 #include <boost/filesystem.hpp>
 #include <fstream>
+#include <math.h>
 
 using namespace Spinnaker;
 using namespace Spinnaker::GenApi;
@@ -19,7 +20,7 @@ using namespace std;
     through the ResetExposure() function.
 
     @param pCam the camera pointer that the exposure that will have its exposure changed
-    @param exposureTime 
+    @param exposureTime the exposure time that is wanted(Microseconds)
 */
 void setExposure(CameraPtr pCam, double exposureTime)
 {
@@ -59,7 +60,12 @@ void setExposure(CameraPtr pCam, double exposureTime)
     }
 
 }
+/*
+    This function will reset the exposure on the camera so that it will return to
+    Automatic exposure settings
 
+    @param pCam the camera pointer that the exposure that will have its exposure settings changed
+*/
 void ResetExposure(CameraPtr pCam)
 {
     try
@@ -80,55 +86,11 @@ void ResetExposure(CameraPtr pCam)
     }
 
 }
+/*
+    This function allows for camera to send images at a continuous rate 
 
-void zoom_out_roi(CameraPtr pCam){
-    try
-    {
-        if(IsReadable(pCam->RegionMode) && IsWritable(pCam->RegionMode)){
-            pCam->RegionMode.SetValue(RegionMode_On);
-        }
-        if(IsReadable(pCam->RegionSelector) && IsWritable(pCam->RegionSelector)){
-
-            pCam->RegionSelector.SetValue(RegionSelector_All);
-        }
-
-        if (IsReadable(pCam->AasRoiEnable) && IsWritable(pCam->AasRoiEnable)){
-            pCam->AasRoiEnable.SetValue(false);
-        }
-        
-        if (IsReadable(pCam->OffsetX)&& IsWritable(pCam->OffsetX)){
-            pCam->OffsetX.SetValue(0);
-        }
-        if (IsReadable(pCam->OffsetY)&& IsWritable(pCam->OffsetY)){
-            pCam->OffsetY.SetValue(0);
-        }
-        if (IsReadable(pCam->Width)&& IsWritable(pCam->Width)){
-            pCam->Width.SetValue(pCam->Width.GetMax()); 
-        }
-        if (IsReadable(pCam->Height)&& IsWritable(pCam->Height)){
-            pCam->Height.SetValue(pCam->Height.GetMax());
-        }
-        
-        if (IsReadable(pCam->AasRoiOffsetX)&& IsWritable(pCam->AasRoiOffsetX)){
-            pCam->AasRoiOffsetX.SetValue(0);
-        }
-        if (IsReadable(pCam->AasRoiOffsetY)&& IsWritable(pCam->AasRoiOffsetY)){
-            pCam->AasRoiOffsetY.SetValue(0);
-        }
-        if (IsReadable(pCam->AasRoiWidth)&& IsWritable(pCam->AasRoiWidth)){
-            pCam->AasRoiWidth.SetValue(pCam->AasRoiWidth.GetMax());
-        }
-        if (IsReadable(pCam->AasRoiHeight)&& IsWritable(pCam->AasRoiHeight)){
-            pCam->AasRoiHeight.SetValue(pCam->AasRoiHeight.GetMax());
-        }
-    }
-    catch (Spinnaker::Exception& e)
-    {
-        cout << "Error: " << e.what() << endl;
-        throw std::exception();
-    }
-}
-
+    @param pCam the camera pointer
+*/
 void setCameraToContinuous(CameraPtr pCam){
     /*
         This function sets the camera to continuous mode
@@ -140,12 +102,11 @@ void setCameraToContinuous(CameraPtr pCam){
     }
     pCam->AcquisitionMode.SetValue(AcquisitionMode_Continuous);
     cout << "Acquisition mode set to continuous..." << endl;
-
 }
 
 void createDirectory(string path){
     /*
-        This function creates in directory in the current path and then switch the current path to the newly created directory
+        This function creates in directory in the current path and then switchs the current path to the newly created directory
     */
     boost::filesystem::path p{path};
     if(!(boost::filesystem::exists(p))){
@@ -158,7 +119,7 @@ void createDirectory(string path){
 
 gcstring getSerialNumber(CameraPtr pCam){
     /*
-        This function returns the serial for a camera object.
+        This function returns the serial number for a camera object.
     */
     gcstring deviceSerialNumber("");
 
@@ -196,8 +157,6 @@ ostringstream getUniqueName(gcstring serialNumber){
     return filename;
 }
 
-// This function acquires and saves 8 images from a device; please see
-// Acquisition example for more in-depth comments on the acquisition of images.
 void acquireXImages(CameraPtr pCam, int amountOfImages, int totalImgCnt, ofstream &file, double currentExposure)
 {
     /*
@@ -214,10 +173,10 @@ void acquireXImages(CameraPtr pCam, int amountOfImages, int totalImgCnt, ofstrea
         int img_collected = 0;
         while(img_collected < amountOfImages){
             try{
-                zoom_out_roi(pCam);
                 // Retrieve next received image and ensure image completion
                 ImagePtr pResultImage = pCam->GetNextImage(1000);
                 if(pResultImage->IsIncomplete()){
+                    // The Image has failed to be collected 
                     continue;
                 }else{
                     // Convert image to mono 8
@@ -228,17 +187,14 @@ void acquireXImages(CameraPtr pCam, int amountOfImages, int totalImgCnt, ofstrea
                     convertedImage->Save(filename.str().c_str());
                     cout << "Image saved at " << filename.str() << endl;
                     // Adding information to the times.txt file
+                    // Image_Number Time current_exposure     <- how the information is stored in the time file
                     file << (totalImgCnt+img_collected) << " " << (currentTime()/1000)<< " " << (currentExposure/1000) << "\n";
                     img_collected++;
                 }
-
-
-
             }catch(Spinnaker::Exception& e){
                 cout << "Error: " << e.what() << endl;
             }
         }
-        // Error: Spinnaker: Camera is not streaming [-1010] <---- this is the error that is occuring 
         // End acquisition
         pCam->EndAcquisition();
     }
@@ -260,17 +216,16 @@ void vignetteDatasetCollection(CameraPtr pCam){
         // Initialize camera
         pCam->Init();
         createDirectory("vignette-dataset");
-        setExposure(pCam, 999999);      // Just for testing(will remove soon)
         cout << "You have 10 seconds to position your camera!" << endl;
         sleep(waitTime);
-        zoom_out_roi(pCam);
         // times.txt file 
         ofstream timeFile; 
         timeFile.open("times.txt");
 
         createDirectory("images");
 
-        for(int pictureTaken=0; pictureTaken < totalImg; ++pictureTaken){
+        for(int pictureTaken=0; pictureTaken < totalImg; ++pictureTaken)
+        {
             auto currentExp = pCam->ExposureTime.GetValue();
             acquireXImages(pCam, 1,pictureTaken,timeFile,currentExp);
         }
@@ -279,9 +234,8 @@ void vignetteDatasetCollection(CameraPtr pCam){
 
         // Deinitialize the camera
         pCam->DeInit();
-
+        // Closing time file 
         timeFile.close();
-
     }catch (Spinnaker::Exception& e){
         cout << "A error occurred while doing the vignette dataset collection" << endl;
         cout << "Error:" << e.what() << endl;
@@ -297,10 +251,12 @@ vector<double> getExposureVector(CameraPtr pCam){
         double cam_min = pCam->ExposureTime.GetMin();   // Min exposure of the Flir Flea3 camera in Microseconds
         double cam_max = pCam->ExposureTime.GetMax();   // Max exposure of the Flir Flea3 camera in Microseconds
         cout << "Min: " << cam_min << " Max: " << cam_max << endl;
-        double mult_increment = 1.0651;                  // This value was derived from finding the multiplicative gain from going to from min to max in 120 exposures 
+        // NOTE: This is a last minute adititon that cannot be tested. This is suppose to combat the changing of modes
+        // The mult_increment = 1.0651 was used with mode 0 if this breaks 
+        double mult_increment = pow((cam_max/cam_min),1/120);    // This value was derived from finding the multiplicative gain from going to from min to max in 120 exposures 
         double current_exposure = cam_min; 
-        int exposure_cnt = 0; 
-    
+        int exposure_cnt = 0;  
+
         vector<double> calibration_exposure; 
 
         while(exposure_cnt <= 120){
@@ -310,13 +266,11 @@ vector<double> getExposureVector(CameraPtr pCam){
         }
         cout << "Finished creating exposure vector." << endl;
         return calibration_exposure;
-
     }catch(Spinnaker::Exception& e){
         cout << "Error occurred when creating the exposure vector!" << endl;
         cout << "Error: " << e.what() << endl;
         throw std::exception();
     }
-
 }
 
 void responseDatasetCollection(CameraPtr pCam){
@@ -327,7 +281,6 @@ void responseDatasetCollection(CameraPtr pCam){
     try{     
         // Initialize camera
         pCam->Init();   
-        zoom_out_roi(pCam);
         createDirectory("response-dataset");
 
         // times.txt file 
@@ -340,8 +293,8 @@ void responseDatasetCollection(CameraPtr pCam){
 
         // Looping for the 120 exposures that must be checked
         int imgCnt = 0;
-        for(double exposure : exposures){
-            
+        for(double exposure : exposures)
+        {
             setExposure(pCam, exposure);
             acquireXImages(pCam, 8, imgCnt, timeFile, exposure);        
             imgCnt += 8;                    // The 1000 images at 120 exposures; 1000/120 = 8.333 Images/exposure
@@ -352,6 +305,7 @@ void responseDatasetCollection(CameraPtr pCam){
         // Deinitialize the camera
         pCam->DeInit();
 
+        // Closing file 
         timeFile.close();
     }catch (Spinnaker::Exception& e){
         cout << "A error occurred while doing the response dataset collection" << endl;
@@ -364,22 +318,20 @@ void parseArgument(int argc,char** argv, CameraList camList){
     /*
         This function parse the users argument to decide which photometric calibration dateset will be gathered.
     */
-
-    if(argc < 2){
-        
+    if(argc < 2)
+    {
         cout << "This program requires you to detail which kind of photometric calibration dataset collection is wanted. Either vignette or response." << endl;    
         throw std::exception();
-    }else{
-        if(string(argv[1]) == "--vignette"){
-            
+    }else
+    {
+        if(string(argv[1]) == "--vignette")
+        {
             cout << "Running vignette dataset collection!" << endl;
             vignetteDatasetCollection(camList.GetByIndex(0));
-
-        }else if(string(argv[1]) == "--response"){
-            
+        }else if(string(argv[1]) == "--response")
+        {
             cout << "Running response dataset collection!" << endl;
             responseDatasetCollection(camList.GetByIndex(0));
-
         }else{
             cout << "Argument is not understood! Please use either --vignette or --response. Exiting!" << endl;
             throw std::exception();
@@ -404,7 +356,7 @@ bool cameraCheck(CameraList camList,SystemPtr system){
         cout << "Not enough cameras!" << endl;
         cout << "Done! Press Enter to exit..." << endl;
         getchar();
-        return false;
+        throw std::exception();
     }else{
         return true;
     }
@@ -416,14 +368,9 @@ CameraList getCameras(SystemPtr system){
     */
     CameraList camList = system->GetCameras();
     if(cameraCheck(camList, system))
-    {
         return camList;
-    }else
-    {
-        throw std::exception();             // Gracefully shutdown the program
-    }
+    
 }
-
 
 int main(int argc, char** argv)
 {

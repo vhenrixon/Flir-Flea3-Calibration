@@ -17,7 +17,7 @@ using namespace std;
     This function sets the cameras exposure time to a set time. 
     The exposure time is in microseconds and this function will turn off 
     the automatic exposure of the camera meaning that it will need to be reset 
-    through the ResetExposure() function.
+    through the resetExposure() function.
 
     @param pCam the camera pointer that the exposure that will have its exposure changed
     @param exposureTime the exposure time that is wanted(Microseconds)
@@ -66,7 +66,7 @@ void setExposure(CameraPtr pCam, double exposureTime)
 
     @param pCam the camera pointer that the exposure that will have its exposure settings changed
 */
-void ResetExposure(CameraPtr pCam)
+void resetExposure(CameraPtr pCam)
 {
     try
     {
@@ -106,7 +106,7 @@ void setCameraToContinuous(CameraPtr pCam){
 
 void createDirectory(string path){
     /*
-        This function creates in directory in the current path and then switchs the current path to the newly created directory
+        This function creates in directory in the current path and then switches the current path to the newly created directory
     */
     boost::filesystem::path p{path};
     if(!(boost::filesystem::exists(p))){
@@ -134,7 +134,7 @@ gcstring getSerialNumber(CameraPtr pCam){
     return deviceSerialNumber;
 }
 
-long currentTime(){
+long getCurrentTime(){
     // current time for the name
     auto time = chrono::system_clock::now();
     auto since_epoch = time.time_since_epoch();
@@ -153,7 +153,7 @@ ostringstream getUniqueName(gcstring serialNumber){
     {
         filename << serialNumber.c_str();
     }
-    filename << "-" << currentTime() << ".jpg";
+    filename << "-" << getCurrentTime() << ".jpg";
     return filename;
 }
 
@@ -187,8 +187,8 @@ void acquireXImages(CameraPtr pCam, int amountOfImages, int totalImgCnt, ofstrea
                     convertedImage->Save(filename.str().c_str());
                     cout << "Image saved at " << filename.str() << endl;
                     // Adding information to the times.txt file
-                    // Image_Number Time current_exposure     <- how the information is stored in the time file
-                    file << (totalImgCnt+img_collected) << " " << (currentTime()/1000)<< " " << (currentExposure/1000) << "\n";
+                    // Image_Number Time(ms) current_exposure     <- how the information is stored in the time file
+                    file << (totalImgCnt+img_collected) << " " << (getCurrentTime()/1000)<< " " << (currentExposure/1000) << "\n";
                     img_collected++;
                 }
             }catch(Spinnaker::Exception& e){
@@ -207,7 +207,7 @@ void acquireXImages(CameraPtr pCam, int amountOfImages, int totalImgCnt, ofstrea
 
 void vignetteDatasetCollection(CameraPtr pCam){    
     /*
-        This function collects the image used in the vignette photometric calibratin
+        This function collects the images used in the vignette photometric calibratin
     */
     try{
         int waitTime = 10; 
@@ -243,17 +243,16 @@ void vignetteDatasetCollection(CameraPtr pCam){
 }
 
 vector<double> getExposureVector(CameraPtr pCam){
-    /*
-
+    /*  
     This function returns a vector with the exposure that will be used in the photometric response data collection.
     */
     try{
         double cam_min = pCam->ExposureTime.GetMin();   // Min exposure of the Flir Flea3 camera in Microseconds
         double cam_max = pCam->ExposureTime.GetMax();   // Max exposure of the Flir Flea3 camera in Microseconds
         cout << "Min: " << cam_min << " Max: " << cam_max << endl;
-        // NOTE: This is a last minute adititon that cannot be tested. This is suppose to combat the changing of modes
+        // NOTE: This is a last minute addition that cannot be tested. This is suppose to combat the changing of modes
         // The mult_increment = 1.0651 was used with mode 0 if this breaks 
-        double mult_increment = pow((cam_max/cam_min),1/120);    // This value was derived from finding the multiplicative gain from going to from min to max in 120 exposures 
+        double mult_increment = pow((cam_max/cam_min),1.0/120.0);    // This value was derived from finding the multiplicative gain from going to from min to max in 120 exposures 
         double current_exposure = cam_min; 
         int exposure_cnt = 0;  
 
@@ -299,7 +298,7 @@ void responseDatasetCollection(CameraPtr pCam){
             acquireXImages(pCam, 8, imgCnt, timeFile, exposure);        
             imgCnt += 8;                    // The 1000 images at 120 exposures; 1000/120 = 8.333 Images/exposure
         }
-        ResetExposure(pCam);                                   
+        resetExposure(pCam);                                   
         cout << "Gathered and saved 1000 images. The response Dataset collection is complete. " << endl;
 
         // Deinitialize the camera
@@ -316,7 +315,7 @@ void responseDatasetCollection(CameraPtr pCam){
 
 void parseArgument(int argc,char** argv, CameraList camList){
     /*
-        This function parse the users argument to decide which photometric calibration dateset will be gathered.
+        This function parses the users argument to decide which photometric calibration dateset will be gathered.
     */
     if(argc < 2)
     {

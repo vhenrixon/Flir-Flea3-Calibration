@@ -23,9 +23,11 @@ After installing the SDK, clone this repository, and follow the build instructio
 - cd src/
 - ./run_calibration  --response or --vignette (based on which calibration dataset you would like to gather)
 
-The program will create a folder based on the selected photometric and dump the images into it. The images in the folder can be used to a generate a calibration file using the 
+The program will create a folder based on the selected photometric and dump the images into it. The images in the folder can be used to generate a calibration file using the 
 this git repository: https://github.com/tum-vision/mono_dataset_code
 
 ## NOTE
 
- After running the programm, a folder will be made in the build/src which will contain the images. If you want to run the dataset collection again you must delete the dataset folder so that new folder can be created. 
+ After running the program, a folder will be made in the build/src, which will contain the images. If you want to rerun the dataset collection, you must delete the dataset folder so that a new folder can be created.
+
+ Additionally, If the exposure values are breaking, the value of 1.0651 was tested at mode 0 for the Flir Flea3 camera.
